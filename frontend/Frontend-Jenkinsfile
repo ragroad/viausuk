@@ -1,0 +1,90 @@
+def label = "${BUILD_TAG.replaceAll("\\s","")}"
+
+node {
+
+    withEnv([
+        "BRANCH_NAME=${params.BRANCH_NAME}",
+        "GIT_REPO=${params.GIT_REPO}",
+        "S3_Bucket=${params.S3_Bucket}",
+        "ENVIRONMENT=${params.ENVIRONMENT}",
+        "ENV=${params.ENVIRONMENT}",
+        "REPO_CRED_ID=${params.REPO_CRED_ID}",
+        "AWS_CREDS=${params.AWS_CREDS}",
+        "AWS_CDN=${params.AWS_CDN}",
+        "VITE_API_URL=${params.VITE_API_URL}"
+    ]) {
+
+        withCredentials([
+            string(credentialsId: 'npm-token', variable: 'NPM_TOKEN')
+        ]) {
+
+            stage('Building') {
+
+                echo "Started Building the Job"
+                echo "Git Repo : ${GIT_REPO}"
+                echo "Branch   : ${BRANCH_NAME}"
+                echo "API URL  : ${VITE_API_URL}"
+
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "${BRANCH_NAME}"]],
+                    userRemoteConfigs: [[
+                        credentialsId: "${REPO_CRED_ID}",
+                        url: "${GIT_REPO}"
+                    ]]
+                ])
+                
+                sh '''
+                node -v
+                npm -v
+                export NVM_DIR="$HOME/.nvm"
+                if [ -s "$NVM_DIR/nvm.sh" ]; then
+                   echo "===== NVM FOUND ====="
+                   . "$NVM_DIR/nvm.sh"
+                   nvm install 18
+                   nvm use 18
+                  
+                   echo "===== USING NODE ====="
+                   node -v
+                   npm -v
+               else
+                   echo "===== NVM NOT FOUND ====="
+                   exit 1
+               fi
+                echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+
+                npm install
+
+                export VITE_API_URL="${VITE_API_URL}"
+
+                echo "Building application..."
+                echo "VITE_API_URL=${VITE_API_URL}"
+
+                npm run build
+
+                ls -ltr
+                ls -ltr dist/
+                '''
+            }
+        }
+
+        withAWS([
+            credentials: "${AWS_CREDS}",
+            region: 'ap-south-1'
+        ]) {
+
+            stage('Deploying') {
+
+                sh '''
+                echo "Started Deploying Build"
+
+                aws s3 sync dist/ ${S3_Bucket}/ --delete
+
+                aws cloudfront create-invalidation \
+                    --distribution-id "${AWS_CDN}" \
+                    --paths "/*"
+                '''
+            }
+        }
+    }
+}

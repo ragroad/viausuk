@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --teal: #00C795;
+    --teal-dark: #007D5C;
+    --teal-light: #E0FDF6;
+    --teal-deep: #0B1B18;
+    --sidebar: #0B1B18;
+    --bg: #F7FAFA;
+    --border: #E5EDEB;
+    --muted: #4B6B63;
+  }
+  body { @apply font-sans text-sm antialiased; }
+  * { @apply box-border; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.fade-up { animation: fadeUp .22s ease forwards; }
+.spin     { animation: spin .7s linear infinite; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
