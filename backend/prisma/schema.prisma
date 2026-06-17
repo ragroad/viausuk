@@ -1,0 +1,326 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ──────────────────────────────────────────────────────
+
+enum Plan {
+  FREE
+  PAY_PER_USE
+  PRO
+  ENTERPRISE
+}
+
+enum Market {
+  US
+  UK
+}
+
+enum UseCase {
+  PRE_PURCHASE
+  INSURANCE_CLAIM
+  FLEET_SAFETY
+  DEALER_TRADE_IN
+}
+
+enum InspectionStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  IN_REVIEW
+}
+
+enum InspectionType {
+  PRE_PURCHASE
+  INSURANCE_CLAIM
+  FLEET_SAFETY
+  MOT_STYLE
+}
+
+enum CaseStatus {
+  OPEN
+  IN_REVIEW
+  CLOSED
+  DISPUTED
+}
+
+enum CasePriority {
+  NORMAL
+  URGENT
+}
+
+enum DocType {
+  DRIVER_LICENCE
+  INSURANCE_POLICY
+  REGISTRATION
+  OTHER
+}
+
+enum PhotoZone {
+  FRONT
+  REAR
+  DRIVER_SIDE
+  PASSENGER_SIDE
+  INTERIOR
+  ENGINE_BAY
+  FRONT_TYRES
+  REAR_TYRES
+}
+
+enum DamageSeverity {
+  NONE
+  MINOR
+  MODERATE
+  SEVERE
+}
+
+enum TeamRole {
+  ADMIN
+  INSPECTOR
+  VIEWER
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+  INACTIVE
+}
+
+// ── Models ─────────────────────────────────────────────────────
+
+model Organisation {
+  id                   String    @id @default(cuid())
+  name                 String
+  slug                 String    @unique
+  market               Market    @default(US)
+  plan                 Plan      @default(FREE)
+  useCase              UseCase?
+  fleetSize            String?
+  stripeCustomerId     String?   @unique
+  stripeSubscriptionId String?   @unique
+  currentPeriodEnd     DateTime?
+  inspectionCount      Int       @default(0)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  members     TeamMember[]
+  inspections Inspection[]
+  cases       Case[]
+  invoices    Invoice[]
+  apiKeys     ApiKey[]
+
+  @@map("organisations")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships TeamMember[]
+  inspections Inspection[]
+
+  @@map("users")
+}
+
+model TeamMember {
+  id             String       @id @default(cuid())
+  userId         String
+  organisationId String
+  role           TeamRole     @default(INSPECTOR)
+  status         MemberStatus @default(PENDING)
+  invitedAt      DateTime     @default(now())
+  acceptedAt     DateTime?
+  lastActiveAt   DateTime?
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organisationId])
+  @@map("team_members")
+}
+
+model Inspection {
+  id             String           @id @default(cuid())
+  orgId          String
+  inspectorId    String?
+  vin            String?
+  plate          String?
+  vehicleYear    Int?
+  vehicleMake    String?
+  vehicleModel   String?
+  vehicleTrim    String?
+  type           InspectionType
+  status         InspectionStatus @default(PENDING)
+  overallScore   Int?
+  passedAt       DateTime?
+  failedAt       DateTime?
+  reportUrl      String?
+  nhthaData      Json?
+  dvlaData       Json?
+  recallCount    Int              @default(0)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organisation   Organisation    @relation(fields: [orgId], references: [id])
+  inspector      User?           @relation(fields: [inspectorId], references: [id])
+  documents      Document[]
+  photos         Photo[]
+  checklistItems ChecklistItem[]
+  case           Case?
+
+  @@index([orgId])
+  @@index([vin])
+  @@index([status])
+  @@map("inspections")
+}
+
+model Document {
+  id                   String    @id @default(cuid())
+  inspectionId         String
+  type                 DocType
+  fileName             String
+  fileKey              String    @unique
+  fileUrl              String?
+  mimeType             String
+  fileSizeBytes        Int
+  ocrRawText           String?
+  extractedData        Json?
+  extractionConfidence Float?
+  fraudRiskScore       Float?
+  livenessResult       String?
+  processedAt          DateTime?
+  processingError      String?
+  createdAt            DateTime  @default(now())
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("documents")
+}
+
+model Photo {
+  id              String          @id @default(cuid())
+  inspectionId    String
+  zone            PhotoZone
+  fileName        String
+  fileKey         String          @unique
+  fileUrl         String?
+  thumbnailUrl    String?
+  mimeType        String
+  fileSizeBytes   Int
+  severity        DamageSeverity?
+  panelScore      Int?
+  damageFindings  Json?
+  repairEstLow    Float?
+  repairEstHigh   Float?
+  structuralDmg   Boolean         @default(false)
+  safetyRisk      Boolean         @default(false)
+  aiConfidence    Float?
+  aiModel         String?
+  processedAt     DateTime?
+  processingError String?
+  createdAt       DateTime        @default(now())
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("photos")
+}
+
+model ChecklistItem {
+  id           String     @id @default(cuid())
+  inspectionId String
+  category     String
+  item         String
+  result       String
+  notes        String?
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([inspectionId])
+  @@map("checklist_items")
+}
+
+model Case {
+  id                String       @id @default(cuid())
+  orgId             String
+  inspectionId      String       @unique
+  status            CaseStatus   @default(OPEN)
+  priority          CasePriority @default(NORMAL)
+  reportUrl         String?
+  reportGeneratedAt DateTime?
+  closedAt          DateTime?
+  closedBy          String?
+  notes             String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+  inspection   Inspection   @relation(fields: [inspectionId], references: [id])
+  timeline     CaseEvent[]
+
+  @@index([orgId])
+  @@index([status])
+  @@map("cases")
+}
+
+model CaseEvent {
+  id        String   @id @default(cuid())
+  caseId    String
+  event     String
+  actor     String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  case Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("case_events")
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  orgId           String
+  stripeInvoiceId String   @unique
+  amount          Float
+  currency        String   @default("usd")
+  status          String
+  pdfUrl          String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  createdAt       DateTime @default(now())
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+
+  @@map("invoices")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  orgId      String
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [orgId], references: [id])
+
+  @@map("api_keys")
+}

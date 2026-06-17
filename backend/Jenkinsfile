@@ -1,0 +1,85 @@
+def label = "${BUILD_TAG.replaceAll("\\s","")}"
+node {
+    // setting environment variables
+    withEnv([
+        "ENVIRONMENT=${params.ENVIRONMENT}",
+        "DOCKER_REPO=${params.ECR_PATH}/${params.DOCKER_REPO}",
+        "BUILD_NUMBER=${BUILD_NUMBER}",
+        "BRANCH_NAME=${params.BRANCH_NAME}",
+        "GIT_REPO=${params.GIT_REPO}",
+        "NAMESPACE=${params.NAMESPACE}",
+        "HELM_PROJECT=${params.HELM_PROJECT}",
+        "HELM_REPO_BRANCH=${params.HELM_REPO_BRANCH}",
+        "HELM_REPO=${params.HELM_REPO}",
+        "PROJECTKEY=${params.PROJECTKEY}",
+        "K8S_CRED=${params.K8S_CRED}",
+        "AWS_CREDS=${params.AWS_CREDS}",
+        "AWS_REGION=${params.AWS_REGION}",     
+        "REPO_CRED_ID=${REPO_CRED_ID}"
+    ]) {
+
+        stage('Checkout Repo') {
+            git url: "${GIT_REPO}", branch: "${BRANCH_NAME}", credentialsId: "${REPO_CRED_ID}"
+        }
+
+        script {
+            env.GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+            env.BUILD_DATE = sh(script: "date +%Y-%m-%d", returnStdout: true).trim()
+            env.SAFE_BRANCH = env.BRANCH_NAME.replaceAll("/", "-").toLowerCase()
+            env.BRANCH_DATE_TAG = "${env.SAFE_BRANCH}-${env.BUILD_DATE}"
+            echo "Using Branch-Date Tag: ${env.BRANCH_DATE_TAG}"
+            echo "Using Git commit: ${env.GIT_COMMIT}"
+        }
+
+        stage('Building') {
+            withCredentials([string(credentialsId: 'npm-token', variable: 'NPM_TOKEN')]) {
+                withAWS([credentials: "${AWS_CREDS}", region: "${AWS_REGION}"]) {  
+                    echo "Started Building the Job in region ${AWS_REGION}"
+                    sh ecrLogin()
+                    sh 'docker pull ${DOCKER_REPO}:${ENVIRONMENT} || true'
+                    sh 'docker build --network=host --cache-from ${DOCKER_REPO}:${ENVIRONMENT} --tag ${DOCKER_REPO}:${GIT_COMMIT} --build-arg ENV=${ENVIRONMENT} --build-arg NPM_TOKEN=${NPM_TOKEN} --tag ${DOCKER_REPO}:${ENVIRONMENT} --tag ${DOCKER_REPO}:${BRANCH_DATE_TAG} .'
+                    sh 'docker push ${DOCKER_REPO}:${GIT_COMMIT}'
+                    sh 'docker push ${DOCKER_REPO}:${ENVIRONMENT}'
+                    sh 'docker push ${DOCKER_REPO}:${BRANCH_DATE_TAG}'
+                }
+            }
+        }
+
+        stage('Trivy Scan') {
+            def trivyCache = "/var/lib/jenkins/trivy-cache"
+
+            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                sh """
+                    trivy image \\
+                    --cache-dir "${trivyCache}" \\
+                    --scanners vuln \\
+                    --ignore-unfixed \\
+                    --severity MEDIUM,HIGH,CRITICAL \\
+                    --format json \\
+                    --output trivy-report.json \\
+                    --timeout 20m \
+                    ${DOCKER_REPO}:${GIT_COMMIT}
+                """
+            }
+        }
+
+        git branch: "${HELM_REPO_BRANCH}", credentialsId: "${REPO_CRED_ID}", url: "${HELM_REPO}"
+
+        stage('Update current-image ConfigMap') {
+            withKubeConfig([credentialsId: "${K8S_CRED}"]) {
+                sh """
+                kubectl create configmap current-image \\
+                    --from-literal=tag=${GIT_COMMIT} \\
+                    -n ${NAMESPACE} \\
+                    -o yaml --dry-run=client | kubectl apply -f -
+                """
+            }
+        }
+
+        stage('Deploying') {
+            withKubeConfig([credentialsId: "${K8S_CRED}"]) {
+                sh 'helm upgrade --install --namespace ${NAMESPACE} --set image.tag=${GIT_COMMIT} ${NAMESPACE} namespaces/${HELM_PROJECT} -f namespaces/${HELM_PROJECT}/values.${ENVIRONMENT}.yaml'
+            }
+        }
+    }
+}
