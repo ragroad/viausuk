@@ -1,1 +1,31 @@
 VIA UK prototype
+
+## Monorepo layout
+
+- `backend/` — Express + Prisma API (`rz-via-us-uk`)
+- `frontend/` — React + Vite web client (`rz-via-us-uk-webclient`)
+
+## Railway deployment
+
+This repo is a monorepo. Each Railway service must use a **Root Directory**:
+
+| Service  | Root Directory | Config file (optional)      |
+|----------|----------------|---------------------------|
+| Backend  | `/backend`     | `/backend/railway.json`   |
+| Frontend | `/frontend`    | `/frontend/railway.json`  |
+
+In each service's **Settings** tab on Railway:
+
+1. Set **Root Directory** to `/backend` or `/frontend`.
+2. Optionally set **Railway Config File** to the matching `railway.json` path above.
+3. Redeploy.
+
+If Root Directory is left at `/`, Railpack only sees the repo root and the build will fail.
+
+### Backend env vars
+
+At minimum set `DATABASE_URL` and `REDIS_URL`. Railway injects `PORT` automatically.
+
+### Frontend env vars
+
+Set `VITE_API_URL` to the backend public URL before build (Docker build arg).
