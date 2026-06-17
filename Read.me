@@ -2,59 +2,68 @@ VIA UK prototype
 
 ## Monorepo layout
 
-- `backend/` — Express + Prisma API (`rz-via-us-uk`)
-- `frontend/` — React + Vite web client (`rz-via-us-uk-webclient`)
+- `backend/` — Express + Prisma API
+- `frontend/` — React + Vite web client
 
-## Prototype mode (no API keys needed)
+## Deploy on Railway
 
-The backend defaults to **prototype mode** — you do not need Clerk, Stripe, Claude, or R2 keys:
+The repo includes root-level Dockerfiles so Railway can build **without** setting Root Directory.
 
-| Integration | Prototype behaviour |
-|-------------|---------------------|
-| Redis | Disabled — AI jobs run inline |
-| AI (Claude) | Mock responses |
-| Clerk auth | Demo user auto-attached |
-| Stripe | Mock checkout URLs |
-| R2 storage | Mock upload URLs |
-| DVLA | Mock plate lookup |
+### 1. Create project from GitHub
 
-### Only one thing to add on Railway: PostgreSQL
+Connect `ragroad/viausuk`, branch **`main`**.
 
-You need a database, but Railway provides it automatically — no manual keys:
+### 2. Add PostgreSQL
 
-1. In your Railway project, click **+ New** → **Database** → **PostgreSQL**
-2. Open your **backend service** → **Variables** → **Add Reference** → select `DATABASE_URL` from the Postgres service
+**+ New** → **Database** → **PostgreSQL**
 
-That's it. Railway generates and injects the connection string.
+### 3. Backend service (default)
 
-## Railway deployment
+The first service from this repo uses the **root `Dockerfile`** automatically.
 
-Set **Root Directory** per service:
+| Setting | Value |
+|---------|-------|
+| Branch | `main` |
+| Builder | Dockerfile (auto-detected from root `Dockerfile`) |
 
-| Service  | Root Directory |
-|----------|----------------|
-| Backend  | `/backend`     |
-| Frontend | `/frontend`    |
+**Variables** → reference `DATABASE_URL` from Postgres.
 
-### Backend variables (prototype)
+Generate a public domain. No API keys needed for prototype.
 
-| Variable | Required? | Default / notes |
-|----------|-----------|-----------------|
-| `DATABASE_URL` | Yes | Auto from PostgreSQL plugin |
-| `PROTOTYPE_MODE` | No | `true` |
-| `AI_PROVIDER` | No | `none` (mock AI) |
-| `REDIS_URL` | No | empty (inline jobs) |
+### 4. Frontend service (optional)
 
-All other keys (Clerk, Stripe, R2, etc.) are optional for prototype.
+**+ New** → **GitHub Repo** → same repo, branch `main`
 
-### Frontend variables (prototype)
+| Setting | Value |
+|---------|-------|
+| **Railway Config File** | `/railway.frontend.json` |
+| **OR Dockerfile Path** | `Dockerfile.frontend` |
 
-Clerk is optional — app runs without auth in prototype mode.
-
-For API calls across separate Railway services:
+**Variables:**
 
 ```
 VITE_API_URL=https://${{Backend.RAILWAY_PUBLIC_DOMAIN}}/api/v1
 ```
 
-This uses Railway's auto-generated backend domain — no manual keys.
+Generate a public domain.
+
+> Do **not** use the root `Dockerfile` for the frontend service — that builds the backend.
+
+### Alternative: Root Directory (also works)
+
+| Service | Root Directory |
+|---------|----------------|
+| Backend | `/backend` |
+| Frontend | `/frontend` |
+
+## Prototype mode (no API keys)
+
+| Integration | Behaviour |
+|-------------|-----------|
+| Redis | Disabled — inline jobs |
+| AI | Mock responses |
+| Clerk | Demo auth |
+| Stripe | Mock billing |
+| Storage | Mock uploads |
+
+Only **PostgreSQL** is required (Railway plugin, auto `DATABASE_URL`).
