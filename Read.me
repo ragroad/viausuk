@@ -5,27 +5,56 @@ VIA UK prototype
 - `backend/` — Express + Prisma API (`rz-via-us-uk`)
 - `frontend/` — React + Vite web client (`rz-via-us-uk-webclient`)
 
+## Prototype mode (no API keys needed)
+
+The backend defaults to **prototype mode** — you do not need Clerk, Stripe, Claude, or R2 keys:
+
+| Integration | Prototype behaviour |
+|-------------|---------------------|
+| Redis | Disabled — AI jobs run inline |
+| AI (Claude) | Mock responses |
+| Clerk auth | Demo user auto-attached |
+| Stripe | Mock checkout URLs |
+| R2 storage | Mock upload URLs |
+| DVLA | Mock plate lookup |
+
+### Only one thing to add on Railway: PostgreSQL
+
+You need a database, but Railway provides it automatically — no manual keys:
+
+1. In your Railway project, click **+ New** → **Database** → **PostgreSQL**
+2. Open your **backend service** → **Variables** → **Add Reference** → select `DATABASE_URL` from the Postgres service
+
+That's it. Railway generates and injects the connection string.
+
 ## Railway deployment
 
-This repo is a monorepo. Each Railway service must use a **Root Directory**:
+Set **Root Directory** per service:
 
-| Service  | Root Directory | Config file (optional)      |
-|----------|----------------|---------------------------|
-| Backend  | `/backend`     | `/backend/railway.json`   |
-| Frontend | `/frontend`    | `/frontend/railway.json`  |
+| Service  | Root Directory |
+|----------|----------------|
+| Backend  | `/backend`     |
+| Frontend | `/frontend`    |
 
-In each service's **Settings** tab on Railway:
+### Backend variables (prototype)
 
-1. Set **Root Directory** to `/backend` or `/frontend`.
-2. Optionally set **Railway Config File** to the matching `railway.json` path above.
-3. Redeploy.
+| Variable | Required? | Default / notes |
+|----------|-----------|-----------------|
+| `DATABASE_URL` | Yes | Auto from PostgreSQL plugin |
+| `PROTOTYPE_MODE` | No | `true` |
+| `AI_PROVIDER` | No | `none` (mock AI) |
+| `REDIS_URL` | No | empty (inline jobs) |
 
-If Root Directory is left at `/`, Railpack only sees the repo root and the build will fail.
+All other keys (Clerk, Stripe, R2, etc.) are optional for prototype.
 
-### Backend env vars
+### Frontend variables (prototype)
 
-At minimum set `DATABASE_URL` and `REDIS_URL`. Railway injects `PORT` automatically.
+Clerk is optional — app runs without auth in prototype mode.
 
-### Frontend env vars
+For API calls across separate Railway services:
 
-Set `VITE_API_URL` to the backend public URL before build (Docker build arg).
+```
+VITE_API_URL=https://${{Backend.RAILWAY_PUBLIC_DOMAIN}}/api/v1
+```
+
+This uses Railway's auto-generated backend domain — no manual keys.

@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import * as Sentry from '@sentry/node';
-import { env } from './config/env';
+import { env, isPrototypeMode } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { logger } from './config/logger';
@@ -35,7 +35,7 @@ if (env.SENTRY_DSN) {
 // ── Security & middleware ──────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: isPrototypeMode ? true : env.FRONTEND_URL,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],

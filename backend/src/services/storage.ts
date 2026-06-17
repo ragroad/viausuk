@@ -1,17 +1,19 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { env } from '../config/env';
+import { env, isStorageEnabled } from '../config/env';
 import { logger } from '../config/logger';
 
 // Cloudflare R2 — S3-compatible, zero egress fees
-const r2Client = new S3Client({
-  region: 'auto',
-  endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY || '',
-  },
-});
+const r2Client = isStorageEnabled
+  ? new S3Client({
+      region: 'auto',
+      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: env.R2_ACCESS_KEY_ID || '',
+        secretAccessKey: env.R2_SECRET_ACCESS_KEY || '',
+      },
+    })
+  : null;
 
 function getBucket(market: 'US' | 'UK' = 'US'): string {
   return market === 'UK' ? env.R2_BUCKET_UK : env.R2_BUCKET_US;
@@ -22,16 +24,24 @@ export async function generateUploadUrl(
   contentType: string,
   market: 'US' | 'UK' = 'US'
 ): Promise<string> {
+  if (!r2Client) {
+    logger.warn('Storage not configured — returning mock upload URL', { key });
+    return `https://prototype.local/upload/${encodeURIComponent(key)}?contentType=${encodeURIComponent(contentType)}`;
+  }
+
   const command = new PutObjectCommand({
     Bucket: getBucket(market),
     Key: key,
     ContentType: contentType,
   });
-  // URL expires in 5 minutes — browser must upload within this window
   return getSignedUrl(r2Client, command, { expiresIn: 300 });
 }
 
 export async function generateDownloadUrl(key: string, market: 'US' | 'UK' = 'US'): Promise<string> {
+  if (!r2Client) {
+    return buildPublicUrl(key);
+  }
+
   const command = new GetObjectCommand({
     Bucket: getBucket(market),
     Key: key,
@@ -40,6 +50,11 @@ export async function generateDownloadUrl(key: string, market: 'US' | 'UK' = 'US
 }
 
 export async function deleteFile(key: string, market: 'US' | 'UK' = 'US'): Promise<void> {
+  if (!r2Client) {
+    logger.info('Storage not configured — skipping delete', { key });
+    return;
+  }
+
   try {
     await r2Client.send(new DeleteObjectCommand({ Bucket: getBucket(market), Key: key }));
     logger.info('File deleted from R2', { key });
@@ -50,7 +65,8 @@ export async function deleteFile(key: string, market: 'US' | 'UK' = 'US'): Promi
 }
 
 export function buildPublicUrl(key: string): string {
-  return `${env.R2_PUBLIC_URL}/${key}`;
+  if (env.R2_PUBLIC_URL) return `${env.R2_PUBLIC_URL}/${key}`;
+  return `https://prototype.local/files/${encodeURIComponent(key)}`;
 }
 
 export function generateFileKey(orgId: string, type: string, filename: string): string {

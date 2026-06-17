@@ -4,10 +4,12 @@ const envSchema = z.object({
   NODE_ENV:     z.enum(['development', 'test', 'production']).default('development'),
   PORT:         z.coerce.number().default(3001),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  PROTOTYPE_MODE: z.coerce.boolean().default(true),
 
-  // ── Only DATABASE_URL is truly required ──────────────────────
-  DATABASE_URL: z.string().min(1),
-  REDIS_URL:    z.string().default('redis://localhost:6379'),
+  // Required — on Railway, add a PostgreSQL plugin (one click, auto-injects this)
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — add PostgreSQL on Railway or set locally'),
+  // Leave empty to skip Redis/BullMQ and process AI jobs inline
+  REDIS_URL:    z.string().default(''),
 
   // ── AI ────────────────────────────────────────────────────────
   AI_PROVIDER:         z.enum(['anthropic','openai','gemini','none']).default('none'),
@@ -44,7 +46,7 @@ const envSchema = z.object({
   DVSA_MOT_API_KEY: z.string().optional(),
 
   // ── CRM & Support ─────────────────────────────────────────────
-  INTERCOM_ACCESS_TOKEN: z.string().optional(),   // ← fixes integrations.ts TS error
+  INTERCOM_ACCESS_TOKEN: z.string().optional(),
 
   // ── Monitoring ────────────────────────────────────────────────
   SENTRY_DSN:      z.string().optional(),
@@ -58,20 +60,27 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌  Missing required environment variable:');
+  console.error('❌  Invalid environment configuration:');
   console.error(parsed.error.flatten().fieldErrors);
   process.exit(1);
 }
 
 export const env = parsed.data;
 
+export const isPrototypeMode = env.PROTOTYPE_MODE;
+export const isRedisEnabled = !!env.REDIS_URL.trim();
+export const isStorageEnabled = !!(env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY);
+export const isAiEnabled = env.AI_PROVIDER !== 'none';
+
 // Startup status log
 const d = parsed.data;
 const ok  = (v?: string) => v && !v.startsWith('placeholder');
 console.log('\n── VIA Backend ──────────────────────────────────');
-console.log(`   Database : ✓  configured`);
+console.log(`   Mode     : ${d.PROTOTYPE_MODE ? '⚠  prototype — zero-config defaults' : '✓  production'}`);
+console.log(`   Database : ✓  PostgreSQL`);
+console.log(`   Redis    : ${isRedisEnabled ? '✓  configured' : '⚠  disabled — inline job processing'}`);
 console.log(`   AI       : ${d.AI_PROVIDER === 'none' ? '⚠  none — mock responses active' : `✓  ${d.AI_PROVIDER}`}`);
-console.log(`   Clerk    : ${ok(d.CLERK_SECRET_KEY)    ? '✓  configured' : '⚠  placeholder — prototype mode'}`);
+console.log(`   Clerk    : ${ok(d.CLERK_SECRET_KEY)    ? '✓  configured' : '⚠  placeholder — demo auth'}`);
 console.log(`   Stripe   : ${ok(d.STRIPE_SECRET_KEY)   ? '✓  configured' : '⚠  placeholder — billing disabled'}`);
-console.log(`   Storage  : ${d.R2_ACCOUNT_ID           ? '✓  R2 configured' : '⚠  none — uploads disabled'}`);
+console.log(`   Storage  : ${isStorageEnabled            ? '✓  R2 configured' : '⚠  none — mock upload URLs'}`);
 console.log('─────────────────────────────────────────────────\n');
