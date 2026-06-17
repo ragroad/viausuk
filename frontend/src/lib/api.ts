@@ -19,7 +19,7 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     const msg = err.response?.data?.error || err.message || 'Request failed';
-    if (err.response?.status === 401) {
+    if (err.response?.status === 401 && import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
       window.location.href = '/auth/sign-in';
     }
     return Promise.reject(new Error(msg));
