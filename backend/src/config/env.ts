@@ -6,8 +6,8 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   PROTOTYPE_MODE: z.coerce.boolean().default(true),
 
-  // Required — on Railway, add a PostgreSQL plugin (one click, auto-injects this)
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — add PostgreSQL on Railway or set locally'),
+  // Set automatically by docker-compose, or copy backend/.env.example for local dev
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required — run "docker compose up" or copy backend/.env.example to backend/.env'),
   // Leave empty to skip Redis/BullMQ and process AI jobs inline
   REDIS_URL:    z.string().default(''),
 

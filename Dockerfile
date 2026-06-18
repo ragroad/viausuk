@@ -17,7 +17,7 @@ RUN npm run build
 # ── Stage 2: Runner ───────────────────────────────────────────
 FROM node:20-alpine AS runner
 
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl netcat-openbsd
 
 WORKDIR /app
 
@@ -25,6 +25,8 @@ COPY --from=builder /app/dist            ./dist
 COPY --from=builder /app/node_modules    ./node_modules
 COPY --from=builder /app/prisma          ./prisma
 COPY backend/package*.json ./
+COPY backend/scripts/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PROTOTYPE_MODE=true
@@ -32,4 +34,4 @@ ENV AI_PROVIDER=none
 
 EXPOSE 3001
 
-CMD ["sh", "-c", "npx prisma db push && npm run db:seed && node dist/index.js"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
